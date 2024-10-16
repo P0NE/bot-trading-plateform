@@ -7,8 +7,9 @@ from django.conf import settings
 from .binance_service import place_buy_order, place_sell_order, get_current_price
 
 # Initialiser les clients Binance et Twilio
-binance_client = Client(settings.BINANCE_API_KEY, settings.BINANCE_API_SECRET)
+binance_client = Client(settings.BINANCE_API_TEST_KEY, settings.BINANCE_API_TEST_SECRET)
 binance_client.API_URL = settings.BINANCE_API_BASE_URL  # Utiliser le testnet ou l'API de production
+
 # twilio_client = TwilioClient(settings.TWILIO_SID, settings.TWILIO_AUTH_TOKEN)
 
 # Fonction pour envoyer des notifications via SMS
@@ -95,21 +96,32 @@ def trailing_stop_loss(current_price, trailing_percentage, last_high):
 
 # Fonction pour recalculer les paramètres de la grille
 def recalculate_grid_parameters(symbol):
+    # Calculer la plage de prix avec les bandes de Bollinger
     min_price, max_price = calculate_bollinger_bands(symbol)
+    
+    # Récupérer la volatilité pour ajuster les niveaux de grille
     klines = binance_client.get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1DAY, limit=20)
     close_prices = np.array([float(kline[4]) for kline in klines])
-    volatility = np.std(close_prices) / np.mean(close_prices)
+    volatility = np.std(close_prices) / np.mean(close_prices)  # Exemple de calcul de volatilité
 
+    # Calculer dynamiquement le nombre de niveaux de grille
     grid_levels = calculate_grid_levels(volatility)
+
+    # Calculer le pas de la grille
     grid_step = calculate_grid_step(min_price, max_price, grid_levels)
-    total_capital = 1  # Exemple de 1 BTC
+
+    # Générer les niveaux de prix en fonction de min_price, max_price et grid_step
+    grid_levels_prices = np.arange(min_price, max_price + grid_step, grid_step)
+
+    # Calculer la taille des ordres
+    total_capital = 1  # Exemple avec 1 BTC
     order_size = calculate_order_size(total_capital, grid_levels)
 
-    return grid_levels, grid_step, order_size, min_price, max_price
+    return grid_levels_prices, grid_step, order_size, min_price, max_price
 
 # Fonction principale pour le trading multi-actifs
 def run_dynamic_grid_trading_bot():
-    symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]  # Multi-cryptomonnaies
+    symbols = ["BTCUSDT"]  # Multi-cryptomonnaies
     last_highs = {symbol: 0 for symbol in symbols}
     trailing_percentage = 5  # Pour trailing stop-loss
 
@@ -144,10 +156,10 @@ def run_dynamic_grid_trading_bot():
                 for level in grid_levels_prices:
                     if current_price <= level:  # Achat
                         place_buy_order(symbol, order_size, level)
-                        send_trade_notification(f"Achat exécuté à {level} USDT pour {symbol}")
+                        # send_trade_notification(f"Achat exécuté à {level} USDT pour {symbol}")
                     elif current_price >= level:  # Vente
                         place_sell_order(symbol, order_size, level)
-                        send_trade_notification(f"Vente exécutée à {level} USDT pour {symbol}")
+                        # send_trade_notification(f"Vente exécutée à {level} USDT pour {symbol}")
 
             time.sleep(10)
 
