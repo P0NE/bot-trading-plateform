@@ -1,22 +1,23 @@
 import time
 import numpy as np
 from binance.client import Client
-from twilio.rest import Client as TwilioClient
-from gridbot.models import Trade
-from gridbot.binance_service import place_buy_order, place_sell_order, get_current_price
+# from twilio.rest import Client as TwilioClient
+from .models import Trade
+from django.conf import settings
+from .binance_service import place_buy_order, place_sell_order, get_current_price
 
 # Initialiser les clients Binance et Twilio
 binance_client = Client(settings.BINANCE_API_KEY, settings.BINANCE_API_SECRET)
 binance_client.API_URL = settings.BINANCE_API_BASE_URL  # Utiliser le testnet ou l'API de production
-twilio_client = TwilioClient(settings.TWILIO_SID, settings.TWILIO_AUTH_TOKEN)
+# twilio_client = TwilioClient(settings.TWILIO_SID, settings.TWILIO_AUTH_TOKEN)
 
 # Fonction pour envoyer des notifications via SMS
-def send_trade_notification(message):
-    twilio_client.messages.create(
-        body=message,
-        from_='+1234567890',  # Numéro Twilio
-        to='+0987654321'  # Ton numéro
-    )
+# def send_trade_notification(message):
+#     twilio_client.messages.create(
+#         body=message,
+#         from_='+1234567890',  # Numéro Twilio
+#         to='+0987654321'  # Ton numéro
+#     )
 
 # Fonction pour calculer les bandes de Bollinger
 def calculate_bollinger_bands(symbol, period=20, std_dev=2):
@@ -44,6 +45,46 @@ def calculate_rsi(symbol, period=14):
     rs = average_gain / average_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
+
+def calculate_grid_levels(volatility, base_levels=5, max_levels=10, min_levels=3):
+    """
+    Calculer dynamiquement le nombre de niveaux de grille en fonction de la volatilité du marché.
+    
+    :param volatility: Volatilité actuelle (mesurée, par exemple, par l'écart-type du prix).
+    :param base_levels: Le nombre de niveaux de grille de base.
+    :param max_levels: Nombre maximal de niveaux de grille.
+    :param min_levels: Nombre minimal de niveaux de grille.
+    :return: Le nombre calculé de niveaux de grille.
+    """
+    if volatility > 0.03:  # Forte volatilité
+        return max(min_levels, base_levels - 2)  # Réduire le nombre de niveaux
+    elif volatility < 0.01:  # Faible volatilité
+        return min(max_levels, base_levels + 3)  # Augmenter le nombre de niveaux
+    else:  # Volatilité moyenne
+        return base_levels  # Garder le nombre de niveaux de base
+
+def calculate_grid_step(min_price, max_price, grid_levels):
+    """
+    Calculer le pas de la grille (grid step), c'est-à-dire l'écart entre chaque niveau de grille.
+    
+    :param min_price: Le prix minimum dans la grille.
+    :param max_price: Le prix maximum dans la grille.
+    :param grid_levels: Le nombre de niveaux dans la grille.
+    :return: Le pas de la grille, c'est-à-dire la différence entre chaque niveau de grille.
+    """
+    # Calcul du step en divisant la plage de prix par le nombre de niveaux - 1
+    return (max_price - min_price) / (grid_levels - 1)
+
+def calculate_order_size(total_capital, grid_levels):
+    """
+    Calculer la taille de chaque ordre en fonction du capital total disponible et du nombre de niveaux de grille.
+
+    :param total_capital: Le capital total que tu souhaites allouer au bot (par exemple, 1 BTC).
+    :param grid_levels: Le nombre total de niveaux dans la grille.
+    :return: La taille de chaque ordre à chaque niveau.
+    """
+    # Diviser le capital total par le nombre de niveaux pour obtenir la taille de chaque ordre
+    return total_capital / grid_levels
 
 # Fonction pour calculer le trailing stop-loss
 def trailing_stop_loss(current_price, trailing_percentage, last_high):
